@@ -75,7 +75,7 @@ print("target pixel")
 print("azimuth [s] ... " + str(check_az_index * sa.az_dt))
 print("range [m] ... " + str(check_rg_index * dr))
 print("\n")
-conv_az_n = 100
+conv_az_n = 50
 spline_d_array = np.zeros(sa.az_n, dtype = np.float64)
 v_platform = sa.spline_interpolation(dir_name, log_name)
 v_platform += 0 #位相回転の速度を合わせるための大雑把な補正
@@ -89,20 +89,6 @@ print("azimuth [m] ... " + str(spline_d_array[check_az_index]))
 compare_data, diff_compare_data = sa.get_compare_data(spline_d_array, raw_data[4], check_az_index, check_rg_index, conv_az_n)
 sa.compare_imaging(compare_data, dir_name + "test_compare_conv" + str(conv_az_n), check_az_index, check_rg_index, conv_az_n)
 np.save(dir_name + "spline_d_array", spline_d_array)
-
-#メジャーで測定したリフレクタ間の距離を使った速度ログの生成
-x = np.array([2.5,6.3,10.83])
-y = np.array([3.2,8.96,15.63])
-y1d = np.poly1d(np.polyfit(x, y, 2))(x)
-#print(y1d)
-plt.plot(x, np.poly1d(np.polyfit(x, y, 2))(x), label='d=2')
-plt.savefig(dir_name + "real_spline" + ".png", format = "png", bbox_inches = 'tight')
-
-##########
-zero = np.arange(0, 20,0.01) 
-real_spline = (y1d[0]*zero**2 + y1d[1]*zero + y1d[2])*1e-2
-#real_spline = (y1d[0]*zero**3 + y1d[1]*zero**2 + y1d[2]*zero[1]+y1d[3])*1e-2
-#print(real_spline)
 
 end = time.time()
 print("実行時間: " + str(end - start))
