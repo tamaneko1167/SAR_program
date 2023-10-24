@@ -13,6 +13,7 @@ import decimal
 import statistics as stat
 from scipy.interpolate import lagrange
 import scipy.interpolate as scipl
+import scipy.signal as signal
 
 
 light_speed = 299792458
@@ -174,6 +175,15 @@ def spline_interpolation(v_lis):
 
     return v_sci(t_array)
 
+#速度データから経路を導出する関数
+def integrate_velocity(v_lis):
+    v_platform = spline_interpolation(v_lis) #補完
+    v_platform += 0 #位相回転の速度を合わせるための大雑把な補正
+    spline_d_array = np.zeros(az_n, dtype = np.float64)
+    for i in range(1, az_n):
+        spline_d_array[i] = spline_d_array[i - 1] + az_dt * v_platform[i]    
+    return spline_d_array
+
 # 1次元データへの平均化フィルタ
 def ave_filter(data, window_n):
     N = data.shape[0]
@@ -278,6 +288,20 @@ def sum(v,log_name, raw_data, az_index, rg_index, conv_az_n):
         fit_spline_d_array[i] = fit_spline_d_array[i - 1] + az_dt * fit_v[i]
     fit_compare_data = get_compare_data(fit_spline_d_array, raw_data, az_index, rg_index, conv_az_n)
     return np.sum(np.angle(fit_compare_data[0]-fit_compare_data[1])**2)
+
+#最適なdvを見つける関数
+def fit_dv(v,dir_name,log_name,raw_data,az_index,rg_index,conv_az_n):
+    sum_squared = np.array([sum(i,log_name,raw_data, az_index, rg_index, conv_az_n) for i in v])
+    plt.scatter(v,sum_squared,s=1)
+    plt.savefig(dir_name + "optimization.png", format = "png", bbox_inches = 'tight')
+    print("optimization" + " image was saved\n")
+    plt.clf()
+    plt.close()
+
+    #極小値を取得
+    ex_min_dv = signal.argrelmin(sum_squared)
+
+    return  ex_min_dv
 
 # 相互相関をグラフ表示
 def corr_imaging(corr, save_name):

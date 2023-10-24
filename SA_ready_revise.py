@@ -11,9 +11,6 @@ import time
 import sys
 import SA_func_revise as sa
 import glob
-import scipy.optimize as opt
-import scipy.interpolate as scipl
-import scipy.signal as signal
 
 light_speed = sa.light_speed
 df = sa.df
@@ -76,13 +73,9 @@ print("range [m] ... " + str(check_rg_index * dr))
 print("\n")
 conv_az_n = 50
 
-###測定したままの速度データとそれによる経路
+###測定したままの速度データによる経路
 v_lis = np.load(log_name) #測定した速度データ
-v_platform = sa.spline_interpolation(v_lis) #補完
-v_platform += 0 #位相回転の速度を合わせるための大雑把な補正
-spline_d_array = np.zeros(sa.az_n, dtype = np.float64)
-for i in range(1, sa.az_n):
-    spline_d_array[i] = spline_d_array[i - 1] + sa.az_dt * v_platform[i]
+spline_d_array = sa.integrate_velocity(v_lis)
 
 ## スプライン補間後の飛行パスグラフ化
 #sa.make_path_graph(spline_d_array[:100], sa.az_dt, 10, 101, dir_name + "spline_d_array")
@@ -92,22 +85,20 @@ sa.compare_imaging(compare_data, dir_name + "test_compare_conv" + str(conv_az_n)
 np.save(dir_name + "spline_d_array", spline_d_array)
 
 ### 軌道補正を行う
-#横軸v, 縦軸二乗の和のグラフ
-v_lis_pra = np.arange(0,2,0.1)
-y = []
-y = np.array([sa.sum(i,log_name,raw_data[4], check_az_index, check_rg_index, conv_az_n) for i in v_lis_pra])
-plt.scatter(v_lis_pra,y)
-plt.savefig(dir_name + "optimization.png", format = "png", bbox_inches = 'tight')
-print("optimization" + " PDFfile was saved\n")
-plt.clf()
-plt.close()
+#横軸v, 縦軸(理論と実測の位相の)差分二乗の和のグラフを生成し、その中での極小値を割り出す
+v = np.arange(0,2,0.01) #考慮するvの範囲
+ex_min_dv = sa.fit_dv(v,dir_name,log_name,raw_data[4], check_az_index, check_rg_index, conv_az_n)
+#print(ex_min_dv)
 
-#極小値を取得
-mini = signal.argrelmin(y)
-print(mini)
-print(v_lis_pra[mini])
+##修正した速度データを使う
+fit_v_lis = sa.revise_v_lis(v[ex_min_dv][0],v_lis,check_az_index,conv_az_n)
+fit_spline_d_array = sa.integrate_velocity(fit_v_lis)
 
-#修正した速度データを使う
+## スプライン補間後の飛行パスグラフ化
+#sa.make_path_graph(spline_d_array[:100], sa.az_dt, 10, 101, dir_name + "spline_d_array")
+print("azimuth [m] ... " + str(fit_spline_d_array[check_az_index]))
+fit_compare_data = sa.get_compare_data(fit_spline_d_array, raw_data[4], check_az_index, check_rg_index, conv_az_n)
+sa.compare_imaging(fit_compare_data, dir_name + "revise_test_compare_conv" + str(conv_az_n), check_az_index, check_rg_index, conv_az_n)
 
 end = time.time()
 print("実行時間: " + str(end - start))
