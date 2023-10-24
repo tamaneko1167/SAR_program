@@ -161,18 +161,13 @@ def make_path_graph(data, dt, x_step, x_max, save_name):
     plt.close()
 
 # スプライン補間によって、フライトログで測定仕切れない部分の速度を補間
-def spline_interpolation(dir_name, log_name):
-    v_lis = np.load(log_name)
-    az_d_array = np.zeros(int(az_n / 10), dtype = np.float64) # スプライン補間前の飛行パスグラフ化
-    az_d_array[0] = 0
-    for i in range(58,68):
-        v_lis[i] += 0.8
-    for i in range(1, int(az_n / 10)):
-        az_d_array[i] = az_d_array[i - 1] + az_dt * v_lis[i] * 10
-
-    ## スプライン補間前の飛行パスグラフ化
-    make_path_graph(az_d_array[:10], az_dt * 10, 1, 11, dir_name + "az_d_array")
+def spline_interpolation(v_lis):
+    #軌道修正
+    # for i in range(58,68):
+    #     v_lis[i] += 0.8
+    #ここまで
     
+    #補完
     t_lis = np.arange(0, az_time, 0.1, dtype = np.float64)
     v_sci = scipl.CubicSpline(t_lis, v_lis)
     t_array = np.arange(0, az_time, 0.01)
@@ -263,6 +258,26 @@ def compare_imaging(compare_data, save_name, az_index, rg_index, conv_az_n):
     print(save_name + " PDFfile was saved\n")
     plt.clf()
     plt.close()
+
+#実験値と理論値を比較し、その差分の和を出す関数
+def revise_v_lis(v,v_lis,az_index,conv_az_n):
+    for i in range(int((az_index-conv_az_n)/10),int((az_index+conv_az_n)/10)):
+        v_lis[i] += v
+    return v_lis
+
+def sum(v,log_name, raw_data, az_index, rg_index, conv_az_n):
+    ##スプライン補正の関数、最終的には作りたい
+    v_lis = np.load(log_name) #ここあとで直す
+    v_lis = revise_v_lis(v,v_lis,az_index,conv_az_n)
+    #補正
+    fit_v = spline_interpolation(v_lis) #補完
+    #ここまで
+
+    fit_spline_d_array = np.zeros(az_n, dtype = np.float64)
+    for i in range(1, az_n):
+        fit_spline_d_array[i] = fit_spline_d_array[i - 1] + az_dt * fit_v[i]
+    fit_compare_data = get_compare_data(fit_spline_d_array, raw_data, az_index, rg_index, conv_az_n)
+    return np.sum(np.angle(fit_compare_data[0]-fit_compare_data[1])**2)
 
 # 相互相関をグラフ表示
 def corr_imaging(corr, save_name):

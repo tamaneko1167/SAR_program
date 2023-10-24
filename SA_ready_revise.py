@@ -9,8 +9,11 @@ import math
 import cmath
 import time
 import sys
-import SA_func as sa
+import SA_func_revise as sa
 import glob
+import scipy.optimize as opt
+import scipy.interpolate as scipl
+import scipy.signal as signal
 
 light_speed = sa.light_speed
 df = sa.df
@@ -25,11 +28,7 @@ print("レンジ理論分解能: " + str(dr * 2) + "\n")
 
 
 start = time.time()
-folders = os.listdir('/Users/hatatamami/Library/CloudStorage/OneDrive-TheUniversityofTokyo/ドローンSAR/中間報告/Tamami Hata')
-sorted_folders = sorted(folders, reverse=True)
-#最新のフォルダを取得する
-#dir_name = '/Users/hatatamami/Library/CloudStorage/OneDrive-TheUniversityofTokyo/ドローンSAR/send/' + sorted_folders[0] + '/'
-dir_name = "../中間報告/Tamami Hata/07-14-12-33-47 (提案手法用)/"
+dir_name = "../Optimization/07-14-12-33-47/"
 print(dir_name)
 filename = dir_name + "fft_data"
 log_name = dir_name + "flight_log_v.npy"
@@ -76,23 +75,39 @@ print("azimuth [s] ... " + str(check_az_index * sa.az_dt))
 print("range [m] ... " + str(check_rg_index * dr))
 print("\n")
 conv_az_n = 50
-spline_d_array = np.zeros(sa.az_n, dtype = np.float64)
-v_platform = sa.spline_interpolation(dir_name, log_name)
+
+###測定したままの速度データとそれによる経路
+v_lis = np.load(log_name) #測定した速度データ
+v_platform = sa.spline_interpolation(v_lis) #補完
 v_platform += 0 #位相回転の速度を合わせるための大雑把な補正
+spline_d_array = np.zeros(sa.az_n, dtype = np.float64)
 for i in range(1, sa.az_n):
     spline_d_array[i] = spline_d_array[i - 1] + sa.az_dt * v_platform[i]
 
 ## スプライン補間後の飛行パスグラフ化
 #sa.make_path_graph(spline_d_array[:100], sa.az_dt, 10, 101, dir_name + "spline_d_array")
-sa.make_path_graph(spline_d_array[:100], sa.az_dt, 10, 101, dir_name + "full_spline_d_array")
 print("azimuth [m] ... " + str(spline_d_array[check_az_index]))
 compare_data = sa.get_compare_data(spline_d_array, raw_data[4], check_az_index, check_rg_index, conv_az_n)
-print(np.angle(compare_data[0]-compare_data[1]))
 sa.compare_imaging(compare_data, dir_name + "test_compare_conv" + str(conv_az_n), check_az_index, check_rg_index, conv_az_n)
 np.save(dir_name + "spline_d_array", spline_d_array)
 
-## 軌道補正
+### 軌道補正を行う
+#横軸v, 縦軸二乗の和のグラフ
+v_lis_pra = np.arange(0,2,0.1)
+y = []
+y = np.array([sa.sum(i,log_name,raw_data[4], check_az_index, check_rg_index, conv_az_n) for i in v_lis_pra])
+plt.scatter(v_lis_pra,y)
+plt.savefig(dir_name + "optimization.png", format = "png", bbox_inches = 'tight')
+print("optimization" + " PDFfile was saved\n")
+plt.clf()
+plt.close()
 
+#極小値を取得
+mini = signal.argrelmin(y)
+print(mini)
+print(v_lis_pra[mini])
+
+#修正した速度データを使う
 
 end = time.time()
 print("実行時間: " + str(end - start))
