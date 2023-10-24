@@ -86,12 +86,13 @@ np.save(dir_name + "spline_d_array", spline_d_array)
 
 ### 軌道補正を行う
 #横軸v, 縦軸(理論と実測の位相の)差分二乗の和のグラフを生成し、その中での極小値を割り出す
-v = np.arange(0,2,0.01) #考慮するvの範囲
+v = np.arange(0,2,0.1) #考慮するvの範囲
 ex_min_dv = sa.fit_dv(v,dir_name,log_name,raw_data[4], check_az_index, check_rg_index, conv_az_n)
 #print(ex_min_dv)
 
 ##修正した速度データを使う
-fit_v_lis = sa.revise_v_lis(v[ex_min_dv][0],v_lis,check_az_index,conv_az_n)
+v_lis = np.load(log_name)
+fit_v_lis = sa.revise_v_lis(v[ex_min_dv][0],log_name,check_az_index,conv_az_n)
 fit_spline_d_array = sa.integrate_velocity(fit_v_lis)
 
 ## スプライン補間後の飛行パスグラフ化
