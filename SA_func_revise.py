@@ -11,7 +11,6 @@ import time
 import os
 import decimal
 import statistics as stat
-from scipy.interpolate import lagrange
 import scipy.interpolate as scipl
 import scipy.signal as signal
 
@@ -35,6 +34,7 @@ az_n = 2000 #アジマス方向のピクセル数
 az_time = az_dt * az_n
 l_d = wl / 2
 l_array = [wl / 2, wl / 2 * 2, wl / 2 * 3]
+D = 0.076 #レーダの実開口長
 
 # レーダソフトが出力してくれるraw_dataを読み込む
 def read_raw_data(filename):
@@ -148,14 +148,16 @@ def sar_imaging(cmd, sar_data, index, az_d_array, name):
 # 補間した飛行経路をアジマス時間軸上に図示するための関数
 def make_path_graph(data, dt, x_step, x_max, save_name):
     fig = plt.figure(figsize = (8,6))
-    plt.rcParams["font.size"] = 16
-    plt.plot(data, marker = '.', linestyle='')
+    plt.rcParams["font.size"] = 5 
+    for i in range(len(data)+1):
+        plt.plot(data[0][i], marker = '.', linestyle='',label=data[1][i])
     #plt.scatter(data, marker = '.', linestyle='', s=0.5)
     #plt.xticks(np.arange(0, x_max, step = x_step), np.round(np.arange(0, x_max * dt, step = dt * x_step), 2), fontsize = 14)
-    plt.xticks(np.arange(0, x_max, step = x_step), np.round(np.arange(0, x_max * dt, step = dt * x_step), 2), fontsize = 12)
+    plt.xticks(np.arange(0, x_max, step = x_step*5), np.round(np.arange(0, x_max * dt, step = dt * x_step*5), 2), fontsize = 6)
     plt.xlabel("azimuth [t]")
     plt.ylabel("path length [m]")
     plt.tight_layout()
+    plt.legend()
     plt.savefig(save_name + ".png", format = "png", bbox_inches = 'tight')
     print(save_name + " PDFfile was saved\n")
     plt.clf()
@@ -163,11 +165,9 @@ def make_path_graph(data, dt, x_step, x_max, save_name):
 
 # スプライン補間によって、フライトログで測定仕切れない部分の速度を補間
 def spline_interpolation(v_lis):
-    #補完
     t_lis = np.arange(0, az_time, 0.1, dtype = np.float64)
     v_sci = scipl.CubicSpline(t_lis, v_lis)
     t_array = np.arange(0, az_time, 0.01)
-
     return v_sci(t_array)
 
 #速度データから経路を導出する関数
@@ -198,18 +198,22 @@ def get_compare_data(az_d_array, raw_data, az_index, rg_index, conv_az_n):
     mig_matrix = np.zeros(az_n * ad_samp_point)
     mig_matrix = np.reshape(mig_matrix, (az_n, -1))
     for n in range(conv_az_n):
-        az = int(az_index - conv_az_n / 2 + n)
+        az = int(az_index - int(conv_az_n / 2) + n)
         if(az < 0 or az >= az_n): continue
         az_d_n = az_d_array[az_index] - az_d_array[az]
         R_n = np.sqrt(R_0 ** 2 + az_d_n ** 2)
         theta = (R_n * 2 / wl)* 2 * np.pi  #参照値となる位相
         mig_rg = int((R_n - R_0 + dr / 2) / dr) + rg_index  #マイグレーションを考慮した参照値のレンジインデックス
         if mig_rg < ad_samp_point: mig_matrix[az, mig_rg] = 1
-        corr = 1.8 #定数補正
+        corr = 0 #定数補正
         compare_data[0, n] = raw_data[az, mig_rg]
         compare_data[1, n] = np.exp(1j * (theta+corr))
 
     ## 参照関数のどの部分を比較しているかを画像表示
+    corr = compare_data[0][int(conv_az_n/2)]/compare_data[1][int(conv_az_n/2)]
+    compare_data[1] *= corr 
+    #print(corr)
+    #compare_data[1] += corr
     index = [0, az_n, 1, 50]
     az_time = round(az_index * az_dt, 2)
     rg_distance = round(rg_index * dr, 2)
@@ -221,23 +225,29 @@ def get_compare_data(az_d_array, raw_data, az_index, rg_index, conv_az_n):
 # 生データと参照関数の位相値を比較するために、重ねて表示
 def compare_imaging(compare_data, save_name, az_index, rg_index, conv_az_n):
     fig = plt.figure(figsize = (8,8))
-    plt.rcParams["font.size"] = 16
+    x_step = int(conv_az_n / 10) + 1
+    plt.rcParams["font.size"] = 12
     ax = fig.add_subplot(2, 1, 1)
     title = "range = " + str(np.round(dr * rg_index, 2)) + " [m]"
     plt.title(title)
     plt.plot(20 * np.log10(abs(compare_data[0])))
     #plt.plot(abs(compare_data[0]))
-    x_step = int(conv_az_n / 10) + 1
-    plt.xticks(np.arange(0, conv_az_n, step = x_step), np.round(np.arange((az_index - conv_az_n / 2) * az_dt, (az_index + conv_az_n / 2) * az_dt, step = az_dt * x_step), 2), fontsize = 14)
+    plt.xticks(np.arange(0, conv_az_n, step = x_step), np.round(np.arange((az_index - conv_az_n / 2) * az_dt, (az_index + conv_az_n / 2) * az_dt, step = az_dt * x_step), 2), fontsize = 15)
     ax.set_ylabel("amp [dB]", fontsize = 20)
 
     ax = fig.add_subplot(2, 1, 2)
     plt.plot(np.angle(compare_data[0]), label = "measured_data")
     plt.plot(np.angle(compare_data[1]), label = "reference")
-    plt.xticks(np.arange(0, conv_az_n, step = x_step), np.round(np.arange((az_index - conv_az_n / 2) * az_dt, (az_index + conv_az_n / 2) * az_dt, step = az_dt * x_step), 2), fontsize = 14)
+    plt.xticks(np.arange(0, conv_az_n, step = x_step), np.round(np.arange((az_index - conv_az_n / 2) * az_dt, (az_index + conv_az_n / 2) * az_dt, step = az_dt * x_step), 2), fontsize = 15)
     ax.set_ylabel("phase [rad]", fontsize = 20)
     plt.legend(bbox_to_anchor=(1, 0), loc='lower right', borderaxespad=1)
-    
+
+    # ax = fig.add_subplot(2, 1, 1)
+    # plt.plot(np.abs(np.angle(compare_data[0])-np.angle(compare_data[1])), label = "diff")
+    # plt.xticks(np.arange(0, conv_az_n, step = x_step), np.round(np.arange((az_index - conv_az_n / 2) * az_dt, (az_index + conv_az_n / 2) * az_dt, step = az_dt * x_step), 2), fontsize = 20)
+    # ax.set_ylabel("phase [rad]", fontsize = 20)
+    # plt.legend(bbox_to_anchor=(1, 0), loc='lower right', borderaxespad=1)
+
     # d_compare_data = np.zeros((2, conv_az_n), np.complex64)
     # for i in range(1, conv_az_n):
     #     d_compare_data[0, i] = (np.angle(compare_data[0, i] * compare_data[0, i - 1].conjugate())) / az_dt
@@ -260,38 +270,57 @@ def compare_imaging(compare_data, save_name, az_index, rg_index, conv_az_n):
     # plt.legend(bbox_to_anchor=(1, 0), loc='lower right', borderaxespad=1, fontsize = 16)
     # plt.tight_layout()
     plt.savefig(save_name + ".png", format = "png", bbox_inches = 'tight')
-    print(save_name + " PDFfile was saved\n")
+    #print(save_name + " PDFfile was saved\n")
     plt.clf()
     plt.close()
 
-#実験値と理論値を比較し、その差分の和を出す関数
-def revise_v_lis(v,log_name,az_index,conv_az_n):
-    v_lis = np.load(log_name)
-    for i in range(int((az_index-conv_az_n)/10),int((az_index+conv_az_n)/10)):
-        v_lis[i] += v
-    return v_lis
+def revise_v_lis(v,v_lis,az_index,fit_range):
+    #v_lis = np.load(log_name)
+    re_v_lis = [v_lis[i] for i in range(len(v_lis))]
+    print(v_lis[int((az_index-fit_range)/10):int((az_index+fit_range)/10)])
+    for i in range(int((az_index-fit_range)/10),int((az_index+fit_range)/10)):
+        re_v_lis[i] = v_lis[i] + v
+    return re_v_lis
 
-def sum(v,log_name, raw_data, az_index, rg_index, conv_az_n):
-    v_lis = revise_v_lis(v,log_name,az_index,conv_az_n)
-    fit_v = spline_interpolation(v_lis) #補完
+###実験値と理論値を比較し、その差分の二乗和を出す関数
+#差そのものでなく差の変化分を近づけたい
+def squ_sum(v,v_lis, raw_data, az_index, rg_index, fit_range):
+    re_v_lis = revise_v_lis(v,v_lis,az_index,fit_range)
+    fit_v = spline_interpolation(re_v_lis) #補完
 
     fit_spline_d_array = np.zeros(az_n, dtype = np.float64)
     for i in range(1, az_n):
         fit_spline_d_array[i] = fit_spline_d_array[i - 1] + az_dt * fit_v[i]
-    fit_compare_data = get_compare_data(fit_spline_d_array, raw_data, az_index, rg_index, conv_az_n)
-    return np.sum(np.angle(fit_compare_data[0]-fit_compare_data[1])**2)
+    fit_compare_data = get_compare_data(fit_spline_d_array, raw_data, az_index, rg_index, fit_range)
+    ##変化分
+    diff_compare_data = np.zeros((2,len(fit_compare_data[0])), dtype = np.complex64)
+    #print(diff_compare_data)
+    for i in range(2):
+        for j in range(len(fit_compare_data[0])):
+            diff_compare_data[i][j]  = fit_compare_data[i][j] - fit_compare_data[i][j-1]
+    #return np.sum(np.angle(fit_compare_data[0]-fit_compare_data[1])**2)
+    return np.sum(np.angle(diff_compare_data[0]-diff_compare_data[1])**2)
 
 #最適なdvを見つける関数
-def fit_dv(v,dir_name,log_name,raw_data,az_index,rg_index,conv_az_n):
-    sum_squared = np.array([sum(i,log_name,raw_data, az_index, rg_index, conv_az_n) for i in v])
-    plt.scatter(v,sum_squared,s=1)
-    plt.savefig(dir_name + "optimization.png", format = "png", bbox_inches = 'tight')
-    print("optimization" + " image was saved\n")
+def fit_dv(i,v,dir_name,v_lis,raw_data,az_index,rg_index,fit_range):
+    sum_squared = np.array([squ_sum(i,v_lis,raw_data, az_index, rg_index, fit_range) for i in v])
+    plt.scatter(v,sum_squared,s=5)
+    plt.rcParams["font.size"] = 8
+    plt.xlabel("v")
+    plt.ylabel("sum")
+    plt.savefig(dir_name + "optimization"+str(i)+".png", format = "png", bbox_inches = 'tight')
+    #print("optimization" + " image was saved\n")
     plt.clf()
     plt.close()
 
     #極小値を取得
-    ex_min_dv = signal.argrelmin(sum_squared)
+    ex_min_dv_list = list(signal.argrelmin(sum_squared))
+    print(np.argmin(sum_squared[ex_min_dv_list[0]]))
+    
+    #極小値の中の最小をとる
+    ex_min_dv = ex_min_dv_list[0][int(np.argmin(sum_squared[ex_min_dv_list[0]]))]
+    # if v[ex_min_dv]>1:
+    #     ex_min_dv = ex_min_dv_list[0][0]
 
     return  ex_min_dv
 
@@ -440,7 +469,11 @@ def cal_az_resolution(az_index, rg_index, d_array, conv_az_n):
     Rg = np.sqrt(Rs**2 - height**2)
     #print(d_array[int(az_index + conv_az_n / 2)] - d_array[int(az_index - conv_az_n / 2)])
     # return wl * R / (np.cos(squint_theta)**2 * 2 * (d_array[int(az_index + conv_az_n / 2)] - d_array[int(az_index - conv_az_n / 2)]))
-    return wl * Rs /((np.cos(squint_theta)**2 * 2 * (d_array[int(az_index + conv_az_n / 2)] - d_array[int(az_index - conv_az_n / 2)])))
+    ##実開口長がきた場合は、開口長はそのまま
+    if(conv_az_n == D):
+        return wl*Rs/((np.cos(squint_theta)**2 * 2 * D)), D
+    else:
+        return wl * Rs /((np.cos(squint_theta)**2 * 2 * (d_array[int(az_index + conv_az_n / 2)] - d_array[int(az_index - conv_az_n / 2)]))), (d_array[int(az_index + conv_az_n / 2)] - d_array[int(az_index - conv_az_n / 2)])
 
 # 3dB落ちのインデックス幅を調べる
 def check_resolution(dB_data):
@@ -467,9 +500,8 @@ def fft2d_expand(dir_name, data, index, d_array, conv_az_n, scope):
 
     # フーリエ変換前に最大値インデックスを取得し，合成開口長などから分解能を計算
     (az_max_index, rg_max_index) = argmax_2d(data[TRX, az_s_index : az_e_index, rg_s_index : rg_e_index])
-    #print(az_max_index + az_s_index, rg_max_index + rg_s_index)
-    #print(d_array[(az_max_index + az_s_index)], (rg_max_index + rg_s_index) * dr)
-    az_t_res = cal_az_resolution(az_max_index + az_s_index, rg_max_index + rg_s_index, d_array, conv_az_n)
+    ##L:
+    az_t_res,L = cal_az_resolution(az_max_index + az_s_index, rg_max_index + rg_s_index, d_array, conv_az_n)
 
     ## 画像の切り出した部分を表示
     plt.figure(figsize = (8,6))
@@ -516,7 +548,6 @@ def fft2d_expand(dir_name, data, index, d_array, conv_az_n, scope):
 
     ## 拡大範囲内の速度は等速だと仮定するため，1pxの速度を使う
     v_s = d_array[az_s_index + az_max_index+1] - d_array[az_s_index + az_max_index] 
-    #print(az_max_index)
     ## アジマス固定，レンジ方向の2dplot
     x_step = 7
     plt.figure(figsize = (8,6))
@@ -552,12 +583,12 @@ def fft2d_expand(dir_name, data, index, d_array, conv_az_n, scope):
     plt.close()
 
     rg_m_res = dr / scope * check_resolution(20 * np.log10(abs(back_data[az_max_index, :])))
-    az_m_res = v_s / scope * check_resolution(20 * np.log10(abs(back_data[:, rg_max_index])))
+    az_m_res = (v_s / scope) * check_resolution(20 * np.log10(abs(back_data[:, rg_max_index])))
     #print(check_resolution(20 * np.log10(abs(back_data[:, rg_max_index]))))
     rg_t_res = dr * 2
     #print(d_array[az_e_index + 1] - d_array[az_e_index])
 
-    return (az_t_res, az_m_res, rg_t_res, rg_m_res)
+    return (az_t_res, az_m_res, rg_t_res, rg_m_res, L)
 
 # 合成開口処理後、部分的に合成開口画像を表示
 def part_sar_imaging(dir_name, data, conv_az_n, index, spline_d_array, add_name):
