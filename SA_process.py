@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import matplotlib.ticker as ptick
-import seaborn as sns
+#import seaborn as sns
 import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -25,7 +25,7 @@ r_array = tau_array * light_speed / 2  #往復なので半分
 print("距離分解能: " + str(dr * 2) + "\n")
 
 start = time.time()
-dir_name = "../中間報告/Tamami Hata/07-14-12-33-47 (提案手法用)/"
+dir_name = "../send/2024-06-20/06-20-16-44-49/"
 filename = dir_name + "fft_data"
 log_name = dir_name + "flight_log"
 
@@ -33,7 +33,7 @@ fft_data = sa.read_fft_data(filename)
 data = sa.code_V_convert(fft_data)
 raw_data = sa.get_raw_data(data)
 
-conv_az_n = 50
+conv_az_n = 100
 spline_d_array = np.load(dir_name + "spline_d_array.npy")
 
 ### 時間領域で畳み込み処理を行い、合成開口 ###
@@ -43,6 +43,7 @@ all_sar_data = np.zeros((sa.ch, (index[1] - index[0]), (index[3] - index[2])), d
 for TRX in range(sa.ch):
     all_sar_data[TRX] = sa.back_projection(raw_data[TRX], index, conv_az_n, spline_d_array)
 
+index = [0, sa.az_n, 25, 50]
 ### アジマス全体での合成開口後の配列保存、画像化 ###
 np.save(dir_name + "all_sar_data_conv" + str(conv_az_n), all_sar_data)
 for TRX in range(sa.ch):
@@ -50,6 +51,6 @@ for TRX in range(sa.ch):
     sa.sar_imaging("amp", all_sar_data[TRX], index, spline_d_array, save_name)
     save_name = ["", "range [m]", "azimuth [m]", dir_name + str(TRX) + "_bpconv" + str(conv_az_n) + "_phase_full"]
     sa.sar_imaging("phase", all_sar_data[TRX], index, spline_d_array, save_name)
-    
+
 end = time.time()
 print("実行時間: " + str(end - start))

@@ -1,15 +1,16 @@
 from pickle import FALSE
 import numpy as np
-import matplotlib.ticker as ptick
+# import matplotlib.ticker as ptick
 import seaborn as sns
-import pandas as pd
-import matplotlib as mpl
+# import pandas as pd
+import matplotlib 
 import matplotlib.pyplot as plt
-import math
+matplotlib.use("Agg") 
+# import math
 import cmath
-import time
-import os
-import decimal
+# import time
+# import os
+# import decimal
 import statistics as stat
 from scipy.interpolate import lagrange
 import scipy.interpolate as scipl
@@ -110,6 +111,73 @@ def heatmap_imaging(cmd, data, index, dx, dy, name):
     plt.clf()
     plt.close()
 
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plot_radar_and_acceleration(cmd, data, index, dx, dy, name, acceleration_data, selected_range_idx):
+    """
+    レーダーデータの一レンジ方向のデータを折れ線グラフとしてプロットし、
+    加速度データと並べて表示する。
+
+    Parameters:
+        cmd: str - "amp" (振幅) または "phase" (位相)
+        data: ndarray - レーダーデータ
+        index: list - [az_s_index, az_e_index, rg_s_index, rg_e_index]
+        dx, dy: float - レーダーデータの解像度
+        name: list - [タイトル, x軸ラベル, y軸ラベル, 出力ファイル名]
+        acceleration_data: ndarray - 加速度データ
+        selected_range_idx: int - どのレンジ方向のデータを取得するかのインデックス
+    """
+    all_font = 20
+    plt.rcParams["font.size"] = all_font
+
+    az_s_index = index[0]
+    az_e_index = index[1]
+    az_len = az_e_index - az_s_index
+
+    # 📌 **cmd に応じてデータを選択**
+    if cmd == "amp":
+        radar_data = 20 * np.log10(abs(data[az_s_index:az_e_index, selected_range_idx]))
+        radar_label = "Radar Intensity (dB)"
+    elif cmd == "phase":
+        radar_data = np.angle(data[az_s_index:az_e_index, selected_range_idx])
+        radar_label = "Radar Phase (radian)"
+    else:
+        raise ValueError("Invalid cmd. Use 'amp' or 'phase'.")
+
+    # 時間軸の作成
+    time_indices = np.arange(az_len) * dy  # `dy` を時間軸として適用
+    time_acceleration = np.arange(len(acceleration_data)) * dy * 10  # **10倍スケールの時間軸**
+
+    # 📌 **レーダーデータと加速度データを並べてプロット**
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+
+    # 📌 **レーダーデータの折れ線グラフ**
+    axes[0].plot(time_indices, radar_data, color='b', marker='o', linestyle='-', label=radar_label, linewidth=2)
+    axes[0].set_ylabel(radar_label, fontsize=all_font)
+    axes[0].set_title(f"{name[0]} - Range Index {selected_range_idx}", fontsize=all_font)
+    axes[0].legend()
+    axes[0].grid(True)
+
+    # 📌 **加速度データの折れ線グラフ (10倍の時間スケール)**
+    axes[1].plot(time_acceleration, acceleration_data, color='r', marker='o', linestyle='-', label="Acceleration Data", linewidth=2)
+    axes[1].set_xlabel("Time (s)", fontsize=all_font)
+    axes[1].set_ylabel("Acceleration (m/s²)", fontsize=all_font)
+    axes[1].set_title("Acceleration Over Time (Scaled 10x)", fontsize=all_font)
+    axes[1].legend()
+    axes[1].grid(True)
+
+    # 📌 **間隔を調整**
+    plt.subplots_adjust(hspace=0.3)
+
+    # 📌 **画像として保存**
+    plt.savefig(name[3] + f"_range_{selected_range_idx}_{cmd}.png", format="png", bbox_inches="tight")
+
+    # 📌 **明示的に表示**
+    plt.show()
+
+    print(name[3] + f" Range {selected_range_idx} {cmd} Overlay Image was saved\n")
+
 # [合成開口後の画像について] 振幅や位相を、レンジアジマス平面に表示。indexとnameは配列
 def sar_imaging(cmd, sar_data, index, az_d_array, name):
     all_font = 20
@@ -165,9 +233,8 @@ def spline_interpolation(dir_name, log_name):
     v_lis = np.load(log_name)
     az_d_array = np.zeros(int(az_n / 10), dtype = np.float64) # スプライン補間前の飛行パスグラフ化
     az_d_array[0] = 0
-    # v_lis += 0.8
-    # for i in range(58,68):
-    #     v_lis[i] += 0.8
+    for i in range(58,68):
+        v_lis[i] += 0.8
     for i in range(1, int(az_n / 10)):
         az_d_array[i] = az_d_array[i - 1] + az_dt * v_lis[i] * 10
 
@@ -410,7 +477,7 @@ def cal_az_resolution(az_index, rg_index, d_array, conv_az_n):
     Rg = np.sqrt(Rs**2 - height**2)
     #print(d_array[int(az_index + conv_az_n / 2)] - d_array[int(az_index - conv_az_n / 2)])
     # return wl * R / (np.cos(squint_theta)**2 * 2 * (d_array[int(az_index + conv_az_n / 2)] - d_array[int(az_index - conv_az_n / 2)]))
-    return wl * Rs /((np.cos(squint_theta)**2 * 2 * (d_array[int(az_index + conv_az_n / 2)] - d_array[int(az_index - conv_az_n / 2)])))
+    return wl * Rs /((np.cos(squint_theta)**2 * 2 * (d_array[int(az_index + conv_az_n / 2)] - d_array[int(az_index - conv_az_n / 2)]))),(d_array[int(az_index + conv_az_n / 2)] - d_array[int(az_index - conv_az_n / 2)])
 
 # 3dB落ちのインデックス幅を調べる
 def check_resolution(dB_data):
@@ -437,9 +504,8 @@ def fft2d_expand(dir_name, data, index, d_array, conv_az_n, scope):
 
     # フーリエ変換前に最大値インデックスを取得し，合成開口長などから分解能を計算
     (az_max_index, rg_max_index) = argmax_2d(data[TRX, az_s_index : az_e_index, rg_s_index : rg_e_index])
-    #print(az_max_index + az_s_index, rg_max_index + rg_s_index)
-    #print(d_array[(az_max_index + az_s_index)], (rg_max_index + rg_s_index) * dr)
-    az_t_res = cal_az_resolution(az_max_index + az_s_index, rg_max_index + rg_s_index, d_array, conv_az_n)
+    ##L:
+    az_t_res,L = cal_az_resolution(az_max_index + az_s_index, rg_max_index + rg_s_index, d_array, conv_az_n)
 
     ## 画像の切り出した部分を表示
     plt.figure(figsize = (8,6))
@@ -485,9 +551,8 @@ def fft2d_expand(dir_name, data, index, d_array, conv_az_n, scope):
     (az_max_index, rg_max_index) = argmax_2d(back_data)
 
     ## 拡大範囲内の速度は等速だと仮定するため，1pxの速度を使う
-    v_s = d_array[az_s_index + az_max_index + 1] - d_array[az_s_index + az_max_index] 
+    v_s = d_array[az_s_index + az_max_index+1] - d_array[az_s_index + az_max_index] 
     #print(az_max_index)
-    #print(d_array[az_s_index + az_max_index])
     ## アジマス固定，レンジ方向の2dplot
     x_step = 7
     plt.figure(figsize = (8,6))
@@ -524,12 +589,11 @@ def fft2d_expand(dir_name, data, index, d_array, conv_az_n, scope):
 
     rg_m_res = dr / scope * check_resolution(20 * np.log10(abs(back_data[az_max_index, :])))
     az_m_res = v_s / scope * check_resolution(20 * np.log10(abs(back_data[:, rg_max_index])))
-    print(check_resolution(20 * np.log10(abs(back_data[:, rg_max_index]))))
+    print(d_array[az_s_index + az_max_index+1] - d_array[az_s_index + az_max_index] )
     rg_t_res = dr * 2
-    #print(v_s)
     #print(d_array[az_e_index + 1] - d_array[az_e_index])
 
-    return (az_t_res, az_m_res, rg_t_res, rg_m_res)
+    return (az_t_res, az_m_res, rg_t_res, rg_m_res,L)
 
 # 合成開口処理後、部分的に合成開口画像を表示
 def part_sar_imaging(dir_name, data, conv_az_n, index, spline_d_array, add_name):

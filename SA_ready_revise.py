@@ -25,7 +25,7 @@ print("レンジ理論分解能: " + str(dr * 2) + "\n")
 
 
 start = time.time()
-dir_name = "../Optimization/07-14-12-33-47/"
+dir_name = "../send/2023-12-22/12-04-13-11-08/"
 print(dir_name)
 filename = dir_name + "fft_data"
 log_name = dir_name + "flight_log_v.npy"
@@ -60,18 +60,16 @@ for tx_first in range(4):
 
 ### スプライン補間により参照関数を作成し、生データの位相値と比較し、部分的にグラフ表示 ###
 # 参照関数を作るために注目するピクセルは、合成開口前に最も強いピークを有していた場所にしておく
+# raw_dataは8つの受信機、アジマス方向に2000px, レンジ方向に512px
 
-### raw_dataは8つの受信機、アジマス方向に2000px, レンジ方向に512px
-
-###とりあえずレンジ方向に17px目の列の中の極大行列をゲットしたい
-##まずはレンジ方向の特定, 位相の回転が1番早いpixelを取得する
+## まずはレンジ方向の特定, 位相の回転が1番早いレンジpixelを取得する
 all_phase = np.angle(raw_data[4])
 
 all_phase_sum = []
 phase_sum_max = 0
+# 位相の変化の大きさの和をとる→それの最大値が考えたいレンジpixel
 # 最終的には反射体ごとにレンジ方向の位置も違うはずなのでそれを特定できるようにする
 for i in range(len(all_phase[0])):
-    #位相の変化の大きさの和をとる
     phase_sum = 0
     for j in range(1,len(all_phase)):
         phase_sum += (abs(all_phase[j,i]-all_phase[j-1,i]))
@@ -92,10 +90,10 @@ print(check_amp)
 rif_sec_s = [] #区間の始まり
 rif_sec_e = [] #区間の終わり
 for i in range(1,len(check_amp)):
-    if check_amp[i-1] < 20 and check_amp[i] > 20: 
-        ##この25適当なのでここも評価したい
+    if check_amp[i-1] < 10 and check_amp[i] > 10: 
+        ##この20適当なのでここも評価したい
         start = i
-    if check_amp[i-1] > 20 and check_amp[i] < 20 and i>start+10: ##要検討
+    if check_amp[i-1] > 10 and check_amp[i] < 10 and i>start+5: ##要検討
         rif_sec_s.append(start)
         rif_sec_e.append(i)
 
@@ -103,7 +101,7 @@ print(rif_sec_s)
 print(rif_sec_e)
 
 ## その中で、対称性のあるところを見つける
-###左右のΔtの位置の値の差の二乗の和が最小になるように
+# 左右のΔtの位置の値の差の二乗の和が最小になるように
 dt = 1 #Δtの幅 ##理想的なdtはどうやって生成するか
 rif_ex = []
 for i in range(len(rif_sec_s)):
@@ -139,7 +137,7 @@ check_rg_index = [phase_sum_max, phase_sum_max, phase_sum_max]
 # print("range [m] ... " + str(check_rg_index[1] * dr))
 # print("\n")
 
-conv_az_n =  150
+conv_az_n = 300
 
 ###測定したままの速度データによる経路
 v_lis = np.load(log_name) #測定した速度データ
@@ -148,52 +146,53 @@ spline_d_array = sa.integrate_velocity(v_lis)
 ## スプライン補間後の飛行パスグラフ化
 #sa.make_path_graph(spline_d_array[:1000], sa.az_dt, 10, 1001, dir_name + "spline_d_array")
 # print("azimuth [m] ... " + str(spline_d_array[check_az_index]))
-compare_data = sa.get_compare_data(spline_d_array, raw_data[4], check_az_index[2], check_rg_index[2], conv_az_n)
-sa.compare_imaging(compare_data, dir_name + "test_compare_conv" + str(conv_az_n), check_az_index[2], check_rg_index[2], conv_az_n)
+compare_data = sa.get_compare_data(spline_d_array, raw_data[4], check_az_index[0], check_rg_index[0], conv_az_n)
+sa.compare_imaging(compare_data, dir_name + "test_compare_conv" + str(conv_az_n), check_az_index[0], check_rg_index[0], conv_az_n)
 np.save(dir_name + "spline_d_array", spline_d_array)
+
 
 no_fit_v_lis = [v_lis[i] for i in range(len(v_lis))]
 fit_v_lis = [v_lis[i] for i in range(len(v_lis))]
 ### 軌道補正を行う
 #横軸v, 縦軸(理論と実測の位相の)差分二乗の和のグラフを生成し、その中での極小値を割り出す
-for i in range(len(check_rg_index)):
-    v = np.arange(0,2,0.02) #考慮するvの範囲(要検討)
-    origin_v_lis = [v_lis[i] for i in range(len(v_lis))]
+# for i in range(len(check_rg_index)):
+#     v = np.arange(0,2,0.02) #考慮するvの範囲(要検討)
+#     origin_v_lis = [v_lis[i] for i in range(len(v_lis))]
 
-    # 回転速度を合わせたいアジマス方向の幅を考えない場合
-    no_ex_min_dv = sa.fit_dv(i,v,dir_name,origin_v_lis,raw_data[4], check_az_index[i], check_rg_index[i], conv_az_n)
-    no_fit_v_lis = sa.revise_v_lis(v[no_ex_min_dv], no_fit_v_lis, check_az_index[i], conv_az_n)
-    print("no_velocity="+str(v[no_ex_min_dv]))
-    no_fit_spline_d_array = sa.integrate_velocity(no_fit_v_lis)
+#     # 回転速度を合わせたいアジマス方向の幅を考えない場合
+#     no_ex_min_dv = sa.fit_dv(i,v,dir_name,origin_v_lis,raw_data[4], check_az_index[i], check_rg_index[i], conv_az_n)
+#     no_fit_v_lis = sa.revise_v_lis(v[no_ex_min_dv], no_fit_v_lis, check_az_index[i], conv_az_n)
+#     print("no_velocity="+str(v[no_ex_min_dv]))
+#     no_fit_spline_d_array = sa.integrate_velocity(no_fit_v_lis)
 
-    # 回転速度を合わせたいアジマス方向の幅, 位相一回転分になるように自動取得したい
-    fit_range = 2
-    for j in range(2,len(raw_data[4])-1,2): 
-        #print(raw_data[4,j,17])
-        if (np.angle(raw_data[4][check_az_index[i]-int(j/2)][17]) < 0 and np.angle(raw_data[4][check_az_index[i]-int((j-2)/2)][17]) > 0) or \
-            (np.angle(raw_data[4][check_az_index[i]+int(j/2)][17]) < 0 and np.angle(raw_data[4][check_az_index[i]+int((j-2)/2)][17]) > 0):
-            fit_range = j
-            print(fit_range)
-            break
-    print(check_az_index[i]-int(fit_range/2), check_az_index[i]+int(fit_range/2))
-    ex_min_dv = sa.fit_dv(i,v,dir_name,origin_v_lis,raw_data[4], check_az_index[i], check_rg_index[i], fit_range)
+#     # 回転速度を合わせたいアジマス方向の幅, 位相一回転分になるように自動取得したい
+#     fit_range = 2
+#     for j in range(2,len(raw_data[4])-1,2): 
+#         #print(raw_data[4,j,17])
+#         if (np.angle(raw_data[4][check_az_index[i]-int(j/2)][17]) < 0 and np.angle(raw_data[4][check_az_index[i]-int((j-2)/2)][17]) > 0) or \
+#             (np.angle(raw_data[4][check_az_index[i]+int(j/2)][17]) < 0 and np.angle(raw_data[4][check_az_index[i]+int((j-2)/2)][17]) > 0):
+#             fit_range = j
+#             print(fit_range)
+#             break
+#     print(check_az_index[i]-int(fit_range/2), check_az_index[i]+int(fit_range/2))
+#     ex_min_dv = sa.fit_dv(i,v,dir_name,origin_v_lis,raw_data[4], check_az_index[i], check_rg_index[i], fit_range)
     
-    #ex_min_dv = sa.fit_dv(i,v,dir_name,origin_v_lis,raw_data[4], check_az_index[i], check_rg_index[i], conv_az_n)
-    ##修正した速度データを使う
-    #fit_v_lis = sa.revise_v_lis(0.48, fit_v_lis, check_az_index[i], fit_range)
-    ##何番目を取り出してくるか考える
-    print("velocity="+str(v[ex_min_dv]))
-    fit_v_lis = sa.revise_v_lis(v[ex_min_dv], fit_v_lis, check_az_index[i], fit_range)
-    fit_spline_d_array = sa.integrate_velocity(fit_v_lis)
+#     #ex_min_dv = sa.fit_dv(i,v,dir_name,origin_v_lis,raw_data[4], check_az_index[i], check_rg_index[i], conv_az_n)
+#     ##修正した速度データを使う
+#     #fit_v_lis = sa.revise_v_lis(0.48, fit_v_lis, check_az_index[i], fit_range)
+#     ##何番目を取り出してくるか考える
+#     print("velocity="+str(v[ex_min_dv]))
+#     fit_v_lis = sa.revise_v_lis(v[ex_min_dv], fit_v_lis, check_az_index[i], fit_range)
+#     fit_spline_d_array = sa.integrate_velocity(fit_v_lis)
 
-    ## スプライン補間後の飛行パスグラフ化
-    sa.make_path_graph([[spline_d_array[:1500],no_fit_spline_d_array[:1500],fit_spline_d_array[:1500]],['no revise','no fitting','optimize']], sa.az_dt, 10, 1501, dir_name + "fit_spline_d_array")
-    print("azimuth [m] ... " + str(fit_spline_d_array[check_az_index]))
-    fit_compare_data = sa.get_compare_data(fit_spline_d_array, raw_data[4], check_az_index[i], check_rg_index[i], conv_az_n)
-    fit_compare_data[0]-fit_compare_data[1]
-    sa.compare_imaging(fit_compare_data, dir_name + "no_revise_test_compare_conv" + str(conv_az_n)+"_"+str(i), check_az_index[i], check_rg_index[i], conv_az_n)
+#     ## スプライン補間後の飛行パスグラフ化
+#     sa.make_path_graph([[spline_d_array[:1500],no_fit_spline_d_array[:1500],fit_spline_d_array[:1500]],['no revise','no fitting','optimize']], sa.az_dt, 10, 1501, dir_name + "fit_spline_d_array")
+#     print("azimuth [m] ... " + str(fit_spline_d_array[check_az_index]))
+#     fit_compare_data = sa.get_compare_data(fit_spline_d_array, raw_data[4], check_az_index[i], check_rg_index[i], conv_az_n)
+#     fit_compare_data[0]-fit_compare_data[1]
+#     sa.compare_imaging(fit_compare_data, dir_name + "no_revise_test_compare_conv" + str(conv_az_n)+"_"+str(i), check_az_index[i], check_rg_index[i], conv_az_n)
 
-np.save(dir_name + "fit_spline_d_array", fit_spline_d_array)
+# np.save(dir_name + "fit_spline_d_array", fit_spline_d_array)
 
 end = time.time()
 print("実行時間: " + str(end - start))
